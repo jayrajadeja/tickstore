@@ -138,6 +138,8 @@ func main() {
 		switch {
 		case *symbol == "":
 			err = errors.New("query: --symbol is required")
+		case *last < 0:
+			err = errors.New("query: --last must be non-negative")
 		case *last > 0 && (*from != minInt64 || *to != maxInt64):
 			err = errors.New("query: --last is exclusive with --from/--to")
 		default:

@@ -29,7 +29,7 @@ func (s *Store) Range(symbol string, from, to int64) ([]tick.Tick, error) {
 	// First index with TS >= from (half-open [lo, hi)).
 	lo, hi := int64(0), count
 	for lo < hi {
-		mid := (lo + hi) / 2
+		mid := lo + (hi-lo)/2
 		tk, err := readRecordAt(f, mid)
 		if err != nil {
 			return nil, err
