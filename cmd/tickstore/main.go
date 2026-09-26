@@ -78,6 +78,24 @@ func writeTicks(out io.Writer, ticks []tick.Tick) error {
 	return w.Flush()
 }
 
+// runQuery prints ticks as text: last N when last > 0, else the range [from,to].
+func runQuery(dir, symbol string, from, to int64, last int, out io.Writer) error {
+	s := store.New(dir)
+	var (
+		ticks []tick.Tick
+		err   error
+	)
+	if last > 0 {
+		ticks, err = s.Last(symbol, last)
+	} else {
+		ticks, err = s.Range(symbol, from, to)
+	}
+	if err != nil {
+		return err
+	}
+	return writeTicks(out, ticks)
+}
+
 // runDump prints every record in the log as text.
 func runDump(dir, symbol string, out io.Writer) error {
 	ticks, err := store.New(dir).Range(symbol, minInt64, maxInt64)
@@ -108,6 +126,22 @@ func main() {
 			err = errors.New("ingest: --symbol is required")
 		} else {
 			err = runIngest(*dir, *symbol, os.Stdin)
+		}
+	case "query":
+		fs := flag.NewFlagSet("query", flag.ExitOnError)
+		dir := fs.String("dir", "data", "data directory")
+		symbol := fs.String("symbol", "", "symbol to query")
+		from := fs.Int64("from", minInt64, "range start (inclusive, logical TS)")
+		to := fs.Int64("to", maxInt64, "range end (inclusive, logical TS)")
+		last := fs.Int("last", 0, "return the last N ticks (exclusive with --from/--to)")
+		fs.Parse(args)
+		switch {
+		case *symbol == "":
+			err = errors.New("query: --symbol is required")
+		case *last > 0 && (*from != minInt64 || *to != maxInt64):
+			err = errors.New("query: --last is exclusive with --from/--to")
+		default:
+			err = runQuery(*dir, *symbol, *from, *to, *last, os.Stdout)
 		}
 	case "dump":
 		fs := flag.NewFlagSet("dump", flag.ExitOnError)
