@@ -108,7 +108,32 @@ func writeIndex(path string, entries []indexEntry) error {
 	return os.Rename(tmp, path)
 }
 
-// loadIndex reads and validates an index file. A missing file yields (nil, nil).
+// Reindex rebuilds symbol's sparse index from its log and writes it atomically,
+// returning the number of entries. Used to upgrade a v1 log that has no index or
+// to refresh a stale one. A missing log is an error.
+func (s *Store) Reindex(symbol string) (int, error) {
+	f, err := s.openForRead(symbol)
+	if err != nil {
+		return 0, err
+	}
+	if f == nil {
+		return 0, errors.New("store: no log for symbol " + symbol)
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return 0, err
+	}
+	count, _ := recordCount(info.Size())
+	entries, err := buildIndex(f, count)
+	if err != nil {
+		return 0, err
+	}
+	if err := writeIndex(s.idxPath(symbol), entries); err != nil {
+		return 0, err
+	}
+	return len(entries), nil
+}
 // A trailing partial entry is ignored, mirroring the log's truncated-tail handling.
 func loadIndex(path string) ([]indexEntry, error) {
 	data, err := os.ReadFile(path)

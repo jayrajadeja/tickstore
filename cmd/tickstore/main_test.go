@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -66,5 +68,49 @@ func TestIngestTruncatedStreamErrors(t *testing.T) {
 	}
 	if out.String() != "ts=1 price=100 qty=5 side=buy\n" {
 		t.Fatalf("dump after truncated ingest = %q", out.String())
+	}
+}
+
+func TestReindexRebuildsAndQueryUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	ticks := make([]tick.Tick, 300)
+	for i := range ticks {
+		ticks[i] = tick.Tick{TS: int64(i), Price: int64(100 + i), Qty: 1, Side: tick.Buy}
+	}
+	if err := runIngest(dir, "X", bytes.NewReader(encodeStream(t, ticks))); err != nil {
+		t.Fatalf("runIngest: %v", err)
+	}
+
+	// Query result before reindex.
+	var before bytes.Buffer
+	if err := runQuery(dir, "X", 150, 160, 0, &before); err != nil {
+		t.Fatalf("runQuery: %v", err)
+	}
+
+	// Delete the index, then reindex it back.
+	if err := os.Remove(filepath.Join(dir, "X.idx")); err != nil {
+		t.Fatalf("remove idx: %v", err)
+	}
+	var rout bytes.Buffer
+	if err := runReindex(dir, "X", &rout); err != nil {
+		t.Fatalf("runReindex: %v", err)
+	}
+	if !strings.Contains(rout.String(), "3 index entries") {
+		t.Fatalf("reindex output = %q, want '3 index entries'", rout.String())
+	}
+
+	// Query result after reindex must be identical.
+	var after bytes.Buffer
+	if err := runQuery(dir, "X", 150, 160, 0, &after); err != nil {
+		t.Fatalf("runQuery after: %v", err)
+	}
+	if before.String() != after.String() {
+		t.Fatalf("query differs after reindex:\n before=%q\n after=%q", before.String(), after.String())
+	}
+}
+
+func TestReindexMissingLogErrors(t *testing.T) {
+	if err := runReindex(t.TempDir(), "NOPE", &bytes.Buffer{}); err == nil {
+		t.Fatal("expected error reindexing a missing log")
 	}
 }

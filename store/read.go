@@ -27,6 +27,28 @@ func readRecordAt(ra io.ReaderAt, i int64) (tick.Tick, error) {
 	return tick.Decode(buf[:])
 }
 
+// readBlock reads n consecutive records starting at record index start in a
+// single ReadAt, decoding them in memory. n must be > 0 and within the log.
+func readBlock(ra io.ReaderAt, start, n int64) ([]tick.Tick, error) {
+	if n <= 0 {
+		return nil, nil
+	}
+	buf := make([]byte, n*tick.RecordSize)
+	off := int64(headerSize) + start*tick.RecordSize
+	if _, err := ra.ReadAt(buf, off); err != nil {
+		return nil, err
+	}
+	out := make([]tick.Tick, n)
+	for i := int64(0); i < n; i++ {
+		tk, err := tick.Decode(buf[i*tick.RecordSize : (i+1)*tick.RecordSize])
+		if err != nil {
+			return nil, err
+		}
+		out[i] = tk
+	}
+	return out, nil
+}
+
 // openForRead opens the log read-only and validates its header. A missing file
 // yields (nil, nil) so callers can return an empty result.
 func (s *Store) openForRead(symbol string) (*os.File, error) {

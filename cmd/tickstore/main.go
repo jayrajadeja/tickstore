@@ -105,8 +105,18 @@ func runDump(dir, symbol string, out io.Writer) error {
 	return writeTicks(out, ticks)
 }
 
+// runReindex rebuilds the sparse index for symbol from its log.
+func runReindex(dir, symbol string, out io.Writer) error {
+	n, err := store.New(dir).Reindex(symbol)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "reindexed %s: %d index entries\n", symbol, n)
+	return nil
+}
+
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: tickstore <ingest|query|dump> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: tickstore <ingest|query|dump|reindex> [flags]")
 }
 
 func main() {
@@ -154,6 +164,16 @@ func main() {
 			err = errors.New("dump: --symbol is required")
 		} else {
 			err = runDump(*dir, *symbol, os.Stdout)
+		}
+	case "reindex":
+		fs := flag.NewFlagSet("reindex", flag.ExitOnError)
+		dir := fs.String("dir", "data", "data directory")
+		symbol := fs.String("symbol", "", "symbol to reindex")
+		fs.Parse(args)
+		if *symbol == "" {
+			err = errors.New("reindex: --symbol is required")
+		} else {
+			err = runReindex(*dir, *symbol, os.Stdout)
 		}
 	default:
 		usage()

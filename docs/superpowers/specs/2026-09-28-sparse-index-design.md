@@ -40,9 +40,10 @@ scanning forward. Consequences:
 
 - A **missing** `.idx` → fall back to today's in-log binary search. Correct, just
   slower. Old logs written by v1 keep working untouched.
-- A **stale/short** `.idx` (crash between log append and index write) → the last
-  entry is still a valid lower bound; forward-scanning the log self-corrects. Never
-  wrong, at worst a slightly longer scan.
+- A **stale/short** `.idx` (crash between log append and index write, so its length
+  ≠ `expectedIndexLen(count)`) → ignored on read; the fallback in-log binary search
+  is used, which is always correct. The index is rebuilt on the next `OpenAppender`
+  or `reindex`.
 - The index is **rebuilt from the log** whenever it is missing or inconsistent
   (on `OpenAppender`, or explicitly via `reindex`). It is disposable.
 
@@ -132,7 +133,7 @@ range:    loadIndex(SYMBOL.idx) ──► binary-search entries (in memory)
 | `.idx` missing | fallback to in-log binary search (correct) |
 | `.idx` bad magic/version | `ErrBadMagic`/`ErrBadVersion` → treat as missing (fallback) + log to stderr on reindex |
 | `.idx` trailing partial entry | ignore the partial tail |
-| `.idx` shorter/stale vs log | lower-bound only; forward-scan self-corrects; rebuilt on next `OpenAppender` |
+| `.idx` shorter/stale vs log (length ≠ `expectedIndexLen`) | ignored on read (fallback stays correct); rebuilt on next `OpenAppender`/`reindex` |
 | `writeIndex` fails on Close | log already flushed+durable; return the error |
 | `reindex` on missing log | error (no log to index) |
 
