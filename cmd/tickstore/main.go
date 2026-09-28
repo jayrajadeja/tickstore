@@ -134,7 +134,9 @@ func runServe(dir, addr string, ctx context.Context, ready chan<- string) error 
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Handler: server.Handler(store.New(dir))}
+	cache := store.NewCached(dir)
+	defer cache.Close()
+	srv := &http.Server{Handler: server.Handler(cache)}
 	if ready != nil {
 		ready <- ln.Addr().String()
 	}
