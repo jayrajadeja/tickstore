@@ -4,12 +4,19 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"github.com/jayrajadeja/tickstore/server"
 	"github.com/jayrajadeja/tickstore/store"
 	"github.com/jayrajadeja/tickstore/tick"
 )
@@ -116,7 +123,32 @@ func runReindex(dir, symbol string, out io.Writer) error {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: tickstore <ingest|query|dump|reindex> [flags]")
+	fmt.Fprintln(os.Stderr, "usage: tickstore <ingest|query|dump|reindex|serve> [flags]")
+}
+
+// runServe starts a read-only HTTP server over the store at dir and blocks until
+// ctx is cancelled, then shuts down gracefully. When ready is non-nil, the actual
+// listen address is sent on it once bound (useful with :0 in tests).
+func runServe(dir, addr string, ctx context.Context, ready chan<- string) error {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	srv := &http.Server{Handler: server.Handler(store.New(dir))}
+	if ready != nil {
+		ready <- ln.Addr().String()
+	}
+	go func() {
+		<-ctx.Done()
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutCtx)
+	}()
+	fmt.Fprintf(os.Stderr, "tickstore serve: listening on %s (dir=%s)\n", ln.Addr(), dir)
+	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+	return nil
 }
 
 func main() {
@@ -175,6 +207,14 @@ func main() {
 		} else {
 			err = runReindex(*dir, *symbol, os.Stdout)
 		}
+	case "serve":
+		fs := flag.NewFlagSet("serve", flag.ExitOnError)
+		dir := fs.String("dir", "data", "data directory")
+		addr := fs.String("addr", ":8080", "listen address")
+		fs.Parse(args)
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		err = runServe(*dir, *addr, ctx, nil)
 	default:
 		usage()
 		os.Exit(2)
