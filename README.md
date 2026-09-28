@@ -45,9 +45,36 @@ tickstore dump --dir data --symbol SYNTH
 
 # (re)build the sparse index for a log — e.g. to upgrade a v1 log
 tickstore reindex --dir data --symbol SYNTH
+
+# serve the store read-only over HTTP/JSON (curl-able)
+tickstore serve --dir data --addr 127.0.0.1:8137
 ```
 
-`--dir` defaults to `data`. `--symbol` is required.
+`--dir` defaults to `data`. `--symbol` is required (except `serve`, which reads any
+symbol per request).
+
+## HTTP API (`serve`)
+
+`tickstore serve` exposes the same read semantics as `query` over HTTP/JSON. It is
+**read-only** — ingestion stays on the CLI pipe — and shuts down gracefully on
+SIGINT/SIGTERM.
+
+```bash
+tickstore serve --dir data --addr 127.0.0.1:8137 &
+curl -s 'localhost:8137/v1/last?symbol=SYNTH&n=3'
+curl -s 'localhost:8137/v1/range?symbol=SYNTH&from=1000&to=2000'
+```
+
+| method + path | mirrors | notes |
+|---------------|---------|-------|
+| `GET /healthz` | — | returns `ok` |
+| `GET /v1/range?symbol=&from=&to=` | `query --from --to` | `from` defaults to MinInt64, `to` to MaxInt64 |
+| `GET /v1/last?symbol=&n=` | `query --last` | `n` required, `n >= 0` |
+
+Responses match the CLI exactly: an unknown/missing symbol, `from > to`, or `n = 0`
+returns `200` with an empty `[]` (never `null`); `side` renders as `"buy"`/`"sell"`.
+A bad/missing param or the wrong param for an endpoint is `400`, an unknown path
+`404`, a non-GET `405` — all JSON.
 
 ## How it works
 
@@ -75,7 +102,8 @@ tickstore reindex --dir data --symbol SYNTH
 |---------|-----|
 | `tick/`  | the 25-byte record + `EncodeInto`/`Decode` (pure) |
 | `store/` | per-symbol append-only log, `Appender`, sparse index, `Range`/`Last`/`Reindex` |
-| `cmd/tickstore/` | `ingest`/`query`/`dump`/`reindex` CLI — the only I/O layer |
+| `cmd/tickstore/` | `ingest`/`query`/`dump`/`reindex`/`serve` CLI — the only I/O layer |
+| `server/` | transport-only HTTP handler over `store.Range`/`Last` (httptest-able) |
 
 ## Development
 
