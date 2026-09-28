@@ -1,6 +1,7 @@
 package store
 
 import (
+	"io"
 	"os"
 
 	"github.com/jayrajadeja/tickstore/tick"
@@ -16,11 +17,11 @@ func recordCount(size int64) (n int64, truncated bool) {
 	return body / tick.RecordSize, body%tick.RecordSize != 0
 }
 
-// readRecordAt reads and decodes the i-th record (0-based) from f.
-func readRecordAt(f *os.File, i int64) (tick.Tick, error) {
+// readRecordAt reads and decodes the i-th record (0-based) from ra.
+func readRecordAt(ra io.ReaderAt, i int64) (tick.Tick, error) {
 	var buf [tick.RecordSize]byte
 	off := int64(headerSize) + i*tick.RecordSize
-	if _, err := f.ReadAt(buf[:], off); err != nil {
+	if _, err := ra.ReadAt(buf[:], off); err != nil {
 		return tick.Tick{}, err
 	}
 	return tick.Decode(buf[:])
