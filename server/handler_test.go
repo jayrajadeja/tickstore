@@ -144,11 +144,11 @@ func TestRangeUnknownSymbolEmpty(t *testing.T) {
 func TestRangeValidationErrors(t *testing.T) {
 	h := Handler(seedStore(t, "SYM", 10))
 	cases := []string{
-		"/v1/range",                       // missing symbol
-		"/v1/range?symbol=",               // blank symbol
-		"/v1/range?symbol=SYM&from=abc",   // bad from
-		"/v1/range?symbol=SYM&to=xyz",     // bad to
-		"/v1/range?symbol=SYM&n=5",        // n not valid for range
+		"/v1/range",                     // missing symbol
+		"/v1/range?symbol=",             // blank symbol
+		"/v1/range?symbol=SYM&from=abc", // bad from
+		"/v1/range?symbol=SYM&to=xyz",   // bad to
+		"/v1/range?symbol=SYM&n=5",      // n not valid for range
 	}
 	for _, path := range cases {
 		if rec := get(t, h, path); rec.Code != http.StatusBadRequest {

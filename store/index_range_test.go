@@ -29,17 +29,17 @@ func TestRangeParityIndexedVsFallback(t *testing.T) {
 
 	type qr struct{ from, to int64 }
 	queries := []qr{
-		{-5, 1000},  // full
-		{0, 0},      // first only
-		{499, 499},  // last only
-		{127, 129},  // across stride boundary 128
-		{128, 128},  // exact stride multiple
-		{256, 300},  // interior block
-		{384, 500},  // last block onward
+		{-5, 1000},   // full
+		{0, 0},       // first only
+		{499, 499},   // last only
+		{127, 129},   // across stride boundary 128
+		{128, 128},   // exact stride multiple
+		{256, 300},   // interior block
+		{384, 500},   // last block onward
 		{1000, 2000}, // past end → empty
-		{-100, -1},  // before start → empty
-		{200, 100},  // from > to → empty
-		{250, 250},  // single interior
+		{-100, -1},   // before start → empty
+		{200, 100},   // from > to → empty
+		{250, 250},   // single interior
 	}
 	idxPath := s.idxPath("SYM")
 	for _, q := range queries {

@@ -15,7 +15,7 @@ import (
 // truth; the index only ever supplies a lower bound that reads refine forward.
 
 const (
-	indexStride  = 128 // one index entry every this many records
+	indexStride   = 128 // one index entry every this many records
 	idxHeaderSize = 8
 	idxEntrySize  = 16
 	idxVersion    = uint16(1)
@@ -137,6 +137,7 @@ func (s *Store) Reindex(symbol string) (int, error) {
 	}
 	return len(entries), nil
 }
+
 // A trailing partial entry is ignored, mirroring the log's truncated-tail handling.
 func loadIndex(path string) ([]indexEntry, error) {
 	data, err := os.ReadFile(path)
