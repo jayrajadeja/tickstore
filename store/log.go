@@ -38,6 +38,10 @@ func (s *Store) path(symbol string) string {
 	return filepath.Join(s.dir, symbol+".log")
 }
 
+func (s *Store) idxPath(symbol string) string {
+	return filepath.Join(s.dir, symbol+".idx")
+}
+
 func writeHeader(w *bufio.Writer) error {
 	var h [headerSize]byte
 	copy(h[0:6], magic)
@@ -65,13 +69,17 @@ func validateHeader(f *os.File) error {
 // Appender appends ticks to one symbol's log with a buffered writer. Opened
 // with O_APPEND so every write lands at end-of-file.
 type Appender struct {
-	f   *os.File
-	w   *bufio.Writer
-	buf [tick.RecordSize]byte
+	f       *os.File
+	w       *bufio.Writer
+	buf     [tick.RecordSize]byte
+	idxPath string
+	next    int64        // record index of the next record to append
+	entries []indexEntry // in-memory sparse index, persisted on Close
 }
 
 // OpenAppender opens (creating if needed) the log for symbol. A new file gets
-// its header; an existing file has its header validated.
+// its header; an existing file has its header validated. The sparse index is
+// loaded and, if missing or inconsistent with the log, rebuilt in memory.
 func (s *Store) OpenAppender(symbol string) (*Appender, error) {
 	if err := os.MkdirAll(s.dir, 0o755); err != nil {
 		return nil, err
@@ -95,21 +103,42 @@ func (s *Store) OpenAppender(symbol string) (*Appender, error) {
 		f.Close()
 		return nil, err
 	}
-	return &Appender{f: f, w: w}, nil
+	a := &Appender{f: f, w: w, idxPath: s.idxPath(symbol)}
+	a.next, _ = recordCount(info.Size())
+	a.entries, err = loadIndex(a.idxPath)
+	if err != nil || len(a.entries) != expectedIndexLen(a.next) {
+		if a.entries, err = buildIndex(f, a.next); err != nil {
+			f.Close()
+			return nil, err
+		}
+	}
+	return a, nil
 }
 
-// Append encodes and buffers one tick.
+// Append encodes and buffers one tick, recording a sparse-index checkpoint at
+// every indexStride-th record.
 func (a *Appender) Append(t tick.Tick) error {
+	if a.next%indexStride == 0 {
+		a.entries = append(a.entries, indexEntry{TS: t.TS, RecordIndex: a.next})
+	}
 	if err := t.EncodeInto(a.buf[:]); err != nil {
 		return err
 	}
-	_, err := a.w.Write(a.buf[:])
-	return err
+	if _, err := a.w.Write(a.buf[:]); err != nil {
+		return err
+	}
+	a.next++
+	return nil
 }
 
-// Close flushes buffered records and closes the file.
+// Close flushes buffered records (so the log is durable before the index that
+// points into it), persists the sparse index atomically, and closes the file.
 func (a *Appender) Close() error {
 	if err := a.w.Flush(); err != nil {
+		a.f.Close()
+		return err
+	}
+	if err := writeIndex(a.idxPath, a.entries); err != nil {
 		a.f.Close()
 		return err
 	}
