@@ -80,29 +80,32 @@ func writeIndex(path string, entries []indexEntry) error {
 		return err
 	}
 	w := bufio.NewWriter(f)
+	// On any error after creating tmp, close and remove the orphaned temp file.
+	fail := func(err error) error {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
 	var h [idxHeaderSize]byte
 	copy(h[0:6], idxMagic)
 	binary.LittleEndian.PutUint16(h[6:8], idxVersion)
 	if _, err := w.Write(h[:]); err != nil {
-		f.Close()
-		return err
+		return fail(err)
 	}
 	for _, e := range entries {
 		b := encodeIndexEntry(e)
 		if _, err := w.Write(b[:]); err != nil {
-			f.Close()
-			return err
+			return fail(err)
 		}
 	}
 	if err := w.Flush(); err != nil {
-		f.Close()
-		return err
+		return fail(err)
 	}
 	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
+		return fail(err)
 	}
 	if err := f.Close(); err != nil {
+		os.Remove(tmp)
 		return err
 	}
 	return os.Rename(tmp, path)

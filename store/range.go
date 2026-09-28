@@ -82,11 +82,13 @@ func scanLowerBound(ra io.ReaderAt, count, from int64) (int64, error) {
 
 // indexedLowerBound uses the sparse index to jump to the block that must contain
 // the first record with TS >= from, reads that one block, and refines within it.
-// The checkpoint at or before `from` bounds the block; the next checkpoint
-// (TS > from) bounds its far edge, so the target is within stride+1 records.
+// It selects the last checkpoint with TS < from as the block start; the next
+// checkpoint therefore has TS >= from, so the first record >= from — even across
+// a run of duplicate timestamps equal to from — is within stride+1 records. This
+// keeps results byte-identical to scanLowerBound's lower_bound over duplicates.
 func indexedLowerBound(ra io.ReaderAt, entries []indexEntry, count, from int64) (int64, error) {
-	// Largest entry with TS <= from (−1 if from precedes the first checkpoint).
-	i := sort.Search(len(entries), func(k int) bool { return entries[k].TS > from }) - 1
+	// Last entry with TS < from (−1 if from precedes/equals the first checkpoint).
+	i := sort.Search(len(entries), func(k int) bool { return entries[k].TS >= from }) - 1
 	var base int64
 	if i >= 0 {
 		base = entries[i].RecordIndex

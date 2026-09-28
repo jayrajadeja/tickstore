@@ -5,6 +5,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/jayrajadeja/tickstore/tick"
 )
 
 type countingReaderAt struct {
@@ -112,5 +114,59 @@ func TestRangeInconsistentIndexFallsBack(t *testing.T) {
 	}
 	if len(got) != 11 || got[0].TS != 400 || got[10].TS != 410 {
 		t.Fatalf("stale-index range wrong: len=%d first/last=%v/%v", len(got), got[0].TS, got[len(got)-1].TS)
+	}
+}
+
+// TestRangeDuplicateTimestampsParity guards the lower_bound-over-duplicates case:
+// a run of equal timestamps that straddles a checkpoint boundary must not cause
+// the indexed path to skip the earliest matching records. Regression for the
+// checkpoint-selection off-by-one (base chosen past the true lower bound).
+func TestRangeDuplicateTimestampsParity(t *testing.T) {
+	dir := t.TempDir()
+	s := New(dir)
+	a, err := s.OpenAppender("DUP")
+	if err != nil {
+		t.Fatalf("OpenAppender: %v", err)
+	}
+	// Records 100..200 all share TS=200, straddling checkpoints 128 and 256.
+	for i := 0; i < 300; i++ {
+		ts := int64(i)
+		if i >= 100 && i <= 200 {
+			ts = 200
+		} else if i > 200 {
+			ts = int64(i + 100) // keep non-decreasing after the run
+		}
+		if err := a.Append(tick.Tick{TS: ts, Price: int64(i), Qty: 1, Side: tick.Buy}); err != nil {
+			t.Fatalf("Append %d: %v", i, err)
+		}
+	}
+	if err := a.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	idxPath := s.idxPath("DUP")
+	for _, from := range []int64{199, 200, 201} {
+		indexed, err := s.Range("DUP", from, 200)
+		if err != nil {
+			t.Fatalf("indexed Range(%d): %v", from, err)
+		}
+		saved, _ := os.ReadFile(idxPath)
+		os.Remove(idxPath)
+		fallback, err := s.Range("DUP", from, 200)
+		if err != nil {
+			t.Fatalf("fallback Range(%d): %v", from, err)
+		}
+		os.WriteFile(idxPath, saved, 0o644)
+		if !reflect.DeepEqual(indexed, fallback) {
+			t.Fatalf("dup-ts parity mismatch from=%d:\n indexed=%v\n fallback=%v", from, indexed, fallback)
+		}
+	}
+	// from=200 must return the whole run starting at record 100 (Price 100).
+	got, err := s.Range("DUP", 200, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 101 || got[0].Price != 100 || got[100].Price != 200 {
+		t.Fatalf("dup run wrong: len=%d first/last price=%d/%d", len(got), got[0].Price, got[len(got)-1].Price)
 	}
 }
