@@ -83,13 +83,20 @@ func (s *Store) Last(symbol string, n int) ([]tick.Tick, error) {
 		return nil, err
 	}
 	count, _ := recordCount(info.Size())
+	return lastFrom(f, count, n)
+}
+
+// lastFrom is the shared Last core over an already-opened log: it returns the
+// final n records (fewer if the log is shorter), ascending. n > 0 is assumed.
+// Both the plain Store and the resident Cache use it for identical results.
+func lastFrom(ra io.ReaderAt, count int64, n int) ([]tick.Tick, error) {
 	start := count - int64(n)
 	if start < 0 {
 		start = 0
 	}
 	out := make([]tick.Tick, 0, count-start)
 	for i := start; i < count; i++ {
-		tk, err := readRecordAt(f, i)
+		tk, err := readRecordAt(ra, i)
 		if err != nil {
 			return nil, err
 		}

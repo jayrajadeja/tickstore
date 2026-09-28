@@ -34,6 +34,15 @@ type Store struct {
 // New returns a Store rooted at dir.
 func New(dir string) *Store { return &Store{dir: dir} }
 
+// Reader is the read-only query surface shared by the plain Store and the
+// resident Cache, so callers (e.g. the HTTP server) can hold either.
+type Reader interface {
+	Range(symbol string, from, to int64) ([]tick.Tick, error)
+	Last(symbol string, n int) ([]tick.Tick, error)
+}
+
+var _ Reader = (*Store)(nil)
+
 func (s *Store) path(symbol string) string {
 	return filepath.Join(s.dir, symbol+".log")
 }

@@ -28,20 +28,29 @@ func (s *Store) Range(symbol string, from, to int64) ([]tick.Tick, error) {
 		return nil, err
 	}
 	count, _ := recordCount(info.Size())
+
+	entries, _ := loadIndex(s.idxPath(symbol)) // a bad/missing index simply falls back
+	return rangeFrom(f, count, entries, from, to)
+}
+
+// rangeFrom is the shared Range core over an already-opened log: it locates the
+// first record with TS >= from (via a consistent sparse index, else an in-log
+// binary search) and scans forward until TS > to. Callers supply the record
+// count and any loaded index; both the plain Store and the resident Cache use it
+// so their results are byte-for-byte identical. from <= to is assumed.
+func rangeFrom(ra io.ReaderAt, count int64, entries []indexEntry, from, to int64) ([]tick.Tick, error) {
 	if count == 0 {
 		return nil, nil
 	}
-
-	entries, _ := loadIndex(s.idxPath(symbol)) // a bad/missing index simply falls back
-
 	var lo int64
+	var err error
 	// Only trust an index that is consistent with the current log; a short/stale
 	// or corrupt-length index is ignored (fallback stays correct, and the index is
 	// rebuilt on the next OpenAppender or `reindex`).
 	if len(entries) > 0 && len(entries) == expectedIndexLen(count) {
-		lo, err = indexedLowerBound(f, entries, count, from)
+		lo, err = indexedLowerBound(ra, entries, count, from)
 	} else {
-		lo, err = scanLowerBound(f, count, from)
+		lo, err = scanLowerBound(ra, count, from)
 	}
 	if err != nil {
 		return nil, err
@@ -49,7 +58,7 @@ func (s *Store) Range(symbol string, from, to int64) ([]tick.Tick, error) {
 
 	var out []tick.Tick
 	for i := lo; i < count; i++ {
-		tk, err := readRecordAt(f, i)
+		tk, err := readRecordAt(ra, i)
 		if err != nil {
 			return nil, err
 		}

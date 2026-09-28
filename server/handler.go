@@ -64,7 +64,7 @@ func toDTOs(ticks []tick.Tick) []tickDTO {
 }
 
 // Handler returns the HTTP handler for the read API backed by s.
-func Handler(s *store.Store) http.Handler {
+func Handler(s store.Reader) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleNotFound) // catch-all: JSON 404 for unknown paths
 	mux.HandleFunc("/healthz", handleHealth)
@@ -87,7 +87,7 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("ok"))
 }
 
-func handleRange(w http.ResponseWriter, r *http.Request, s *store.Store) {
+func handleRange(w http.ResponseWriter, r *http.Request, s store.Reader) {
 	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -120,7 +120,7 @@ func handleRange(w http.ResponseWriter, r *http.Request, s *store.Store) {
 	writeJSON(w, http.StatusOK, rangeResponse{Symbol: symbol, From: from, To: to, Count: len(dtos), Ticks: dtos})
 }
 
-func handleLast(w http.ResponseWriter, r *http.Request, s *store.Store) {
+func handleLast(w http.ResponseWriter, r *http.Request, s store.Reader) {
 	if r.Method != http.MethodGet {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
