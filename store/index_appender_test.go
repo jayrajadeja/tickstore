@@ -8,7 +8,7 @@ import (
 )
 
 // ingestN appends n ticks (TS = i, Price = 100+i, Qty = 1) into symbol.
-func ingestN(t *testing.T, s *Store, symbol string, n int) {
+func ingestN(t testing.TB, s *Store, symbol string, n int) {
 	t.Helper()
 	a, err := s.OpenAppender(symbol)
 	if err != nil {
