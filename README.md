@@ -76,6 +76,14 @@ returns `200` with an empty `[]` (never `null`); `side` renders as `"buy"`/`"sel
 A bad/missing param or the wrong param for an endpoint is `400`, an unknown path
 `404`, a non-GET `405` — all JSON.
 
+`serve` keeps a **resident per-symbol cache** (`store.Cache`): the open log fd and
+parsed sparse index stay hot across requests, validated by a one-`Stat` freshness
+check, so repeat queries skip the per-request open + full index read. On a
+1M-record log this is ~9.6x faster per repeat query (327,523 to 34,196 ns/op). An
+`ingest` that grows a log while the server runs is picked up automatically (the
+Stat detects the new size). The store's append-only, offset-free reads make the
+cache safe under concurrency with no change to results.
+
 ## How it works
 
 - **Fixed-width records.** Every tick is exactly **25 bytes**, little-endian:
@@ -104,6 +112,7 @@ A bad/missing param or the wrong param for an endpoint is `400`, an unknown path
 | `store/` | per-symbol append-only log, `Appender`, sparse index, `Range`/`Last`/`Reindex` |
 | `cmd/tickstore/` | `ingest`/`query`/`dump`/`reindex`/`serve` CLI — the only I/O layer |
 | `server/` | transport-only HTTP handler over `store.Range`/`Last` (httptest-able) |
+| `store.Cache` | resident per-symbol fd + index cache behind the `serve` read path |
 
 ## Development
 
