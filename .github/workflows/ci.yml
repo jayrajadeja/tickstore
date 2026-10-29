@@ -34,3 +34,15 @@ jobs:
         run: go build ./...
       - name: test
         run: go test -race ./...
+
+  notify-eqops:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.EQOPS_DISPATCH_TOKEN }}
+        run: >
+          gh api repos/jayrajadeja/eqops/dispatches -f event_type=bump
+          -f "client_payload[repo]=${{ github.event.repository.name }}"
+          -f "client_payload[sha]=${{ github.sha }}"
